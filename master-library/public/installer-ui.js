@@ -34,6 +34,7 @@ function showJob(job,initialize=false){
   $('#setup-environment').closest('label').hidden=ready;$('#setup-output').closest('label').hidden=ready;
   $('#native-installer').hidden=!job.nativeSetup||ready;if(job.nativeSetup)$('#native-installer').href=job.nativeSetup;
   $('#check-install').hidden=!job.nativeSetup||working||ready;
+  $('#detect-admin').hidden=!ready;$('#detect-admin').disabled=busy;
   if(initialize){$('#setup-admin').value=job.adminPath;$('#setup-db-password').value='';$('#setup-environment').value='';$('#setup-output').value='';$('#setup-sql').value='';}
   if(working)$('#install-log').open=true;
 }
@@ -60,6 +61,7 @@ $('#setup-form').addEventListener('submit',async event=>{
   }catch(e){$('#setup-error').textContent=e.message}finally{busy=false;$('#setup-submit').disabled=false}
 });
 $('#check-install').addEventListener('click',async()=>{try{$('#check-install').disabled=true;showJob(await post('check/'+jobId));updated()}catch(e){$('#setup-error').textContent=e.message}finally{$('#check-install').disabled=false}});
+$('#detect-admin').addEventListener('click',async()=>{if(!jobId||busy)return;busy=true;$('#detect-admin').disabled=true;$('#setup-error').textContent='';try{showJob(await post('admin/'+jobId));updated()}catch(e){$('#setup-error').textContent=e.message}finally{busy=false;$('#detect-admin').disabled=false}});
 setInterval(async()=>{
   if(!$('#setup-dialog').open||!jobId||polling||busy)return;
   polling=true;try{const previous=jobs.find(j=>j.id===jobId)?.status;await inventory();const job=jobs.find(j=>j.id===jobId);if(job){showJob(job);if(previous!==job.status)updated()}}catch(e){$('#setup-error').textContent=e.message}finally{polling=false}

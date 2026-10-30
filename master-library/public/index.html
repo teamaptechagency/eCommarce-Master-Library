@@ -60,13 +60,13 @@
     <form id="setup-form" hidden>
       <div id="setup-fields"><p class="install-hint">Supply only the settings this source needs, then continue installation.</p>
         <label>Admin portal path (optional)<input id="setup-admin" placeholder="/admin"></label>
-        <p class="install-hint">Uploaded admin portals use the source application's login. Password-free demo access requires an adapter for that application.</p>
+        <p class="install-hint">Supported source layouts receive a password-free local admin demo. Other admin portals use the source application's login.</p>
         <label id="setup-php-field">PHP runtime<select id="setup-php"><option value="">Automatic</option><option value="8.2">PHP 8.2</option><option value="8.4">PHP 8.4</option></select></label>
         <div id="setup-database"><h3>Local database</h3><p class="install-hint">A separate database and restricted database user will be created for this website.</p><div class="install-field-grid"><label>Host<input id="setup-db-host" value="127.0.0.1" readonly></label><label>Port<input id="setup-db-port" type="number" min="1" max="65535" value="3306"></label><label>Database administrator<input id="setup-db-user" value="root" autocomplete="off"></label><label>Database password<input id="setup-db-password" type="password" autocomplete="new-password"></label></div><label>Base database backup (.sql)<input id="setup-sql" type="file" accept=".sql"></label></div>
         <label>Environment values (optional)<textarea id="setup-environment" rows="4" placeholder="VITE_API_URL=http://127.0.0.1:9000"></textarea></label>
         <label>Built public directory (optional)<input id="setup-output" placeholder="dist or build — relative to the application"></label>
       </div>
-      <div class="dialog-actions"><a id="native-installer" class="button secondary" target="_blank" rel="noopener" hidden>Open website installer ↗</a><button id="check-install" type="button" class="button secondary" hidden>Check installation</button><button id="setup-submit" type="submit" class="button primary">Install / Retry</button></div>
+      <div class="dialog-actions"><a id="native-installer" class="button secondary" target="_blank" rel="noopener" hidden>Open website installer ↗</a><button id="check-install" type="button" class="button secondary" hidden>Check installation</button><button id="detect-admin" type="button" class="button secondary" hidden>Detect / enable admin</button><button id="setup-submit" type="submit" class="button primary">Install / Retry</button></div>
     </form>
     <p id="setup-error" class="install-error" role="alert"></p><details id="install-log"><summary>Installation progress log</summary><pre id="setup-log" aria-live="polite"></pre></details>
   </dialog>

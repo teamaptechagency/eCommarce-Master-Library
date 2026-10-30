@@ -7,6 +7,7 @@ import {pipeline} from 'node:stream/promises';
 import {Transform} from 'node:stream';
 import {extractZip} from './archive.mjs';
 import {repairViteEsbuildPeer} from './npm-compatibility.mjs';
+import {discoverAdmin,prepareAdminDemo} from './admin-discovery.mjs';
 
 const exists=fs.existsSync;
 const readJSON=file=>JSON.parse(fs.readFileSync(file,'utf8'));
@@ -78,7 +79,7 @@ export class Installer {
     if(!job.siteId||['duplicate','superseded'].includes(job.status))return;
     let site=this.sites.find(s=>s.id===job.siteId);
     if(!site){site={id:job.siteId,initials:job.name.split(/\s+/).map(s=>s[0]).join('').replace(/[^\p{L}\p{N}]/gu,'').slice(0,2).toUpperCase()||'WS',color:'#46796a',category:'ZIP uploads',features:[]};this.sites.push(site);}
-    Object.assign(site,{name:job.name,subtitle:job.title||job.name,description:job.status==='ready'?'Installed from your ZIP archive. Original source layout and assets.':job.message||'Preparing uploaded source.',source:job.filename||site.source,archiveHash:job.hash,setupId:job.id,managedUpload:true,installState:job.status,app:job.app,port:job.port,php:job.php,kind:job.type==='laravel'?'uploaded-laravel':job.type==='php'?'uploaded-php':'uploaded-static',publicDir:job.publicDir,spa:job.type==='vite',admin:job.adminPath||null,demoSupported:false,blocked:job.status==='ready'?null:job.message||'Installation in progress',features:job.status==='ready'?['Original storefront',...(job.adminPath?['Admin portal']:[]),'Install / Setup']:['Install / Setup']});
+    Object.assign(site,{name:job.name,subtitle:job.title||job.name,description:job.status==='ready'?'Installed from your ZIP archive. Original source layout and assets.':job.message||'Preparing uploaded source.',source:job.filename||site.source,archiveHash:job.hash,setupId:job.id,managedUpload:true,installState:job.status,app:job.app,port:job.port,php:job.php,kind:job.demoAdapter?'react-demo':job.type==='laravel'?'uploaded-laravel':job.type==='php'?'uploaded-php':'uploaded-static',publicDir:job.publicDir,spa:job.type==='vite',admin:job.adminPath||null,adminTabs:job.adminTabs||[],demoSupported:Boolean(job.demoAdapter),blocked:job.status==='ready'?null:job.message||'Installation in progress',features:job.status==='ready'?['Original storefront',...(job.adminPath?[job.demoAdapter?'Admin demo':'Admin portal']:[]),'Install / Setup']:['Install / Setup']});
   }
   async receive(req,file,maxBytes) {
     let bytes=0;const hash=crypto.createHash('sha256');
@@ -110,6 +111,14 @@ export class Installer {
     fs.mkdirSync(job.directory);this.jobs.push(job);this.change(job,{message:'Preparing a separate working copy of the source.'});this.enqueue(job);return this.public(job);
   }
   enqueue(job){if(job.status==='running'||job.enqueued)return;job.enqueued=true;this.queue=this.queue.catch(()=>{}).then(async()=>{delete job.enqueued;await this.install(job)});}
+  async enableAdmin(id){
+    const job=this.get(id);if(job.status!=='ready'||job.enqueued)throw Error('Finish the current installation before enabling admin.');
+    const discovery=discoverAdmin(job.app,job.type);
+    if(!discovery.path)throw Error('No supported admin route was found in this source. Enter its actual admin path in Setup.');
+    job.adminPath||=discovery.path;job.adminTabs=discovery.tabs;
+    if(!discovery.profile){this.change(job,{});return this.public(job);}
+    this.change(job,{status:'queued',phase:'Preparing admin demo',message:'Rebuilding the original dashboard with local demo access…'});this.enqueue(job);return this.public(job);
+  }
   async setup(id,config){
     const job=this.get(id);if(job.enqueued||job.status==='running')throw Error('This installation is already running.');
     if(job.status==='superseded')throw Error('Use the latest source ZIP for this website.');
@@ -184,10 +193,13 @@ export class Installer {
           }
           job.dependenciesInstalledHash=dependencyHash();this.persist();
         }
+        const admin=discoverAdmin(job.app,job.type);job.adminPath||=admin.path;job.adminTabs=admin.tabs;
+        if(admin.profile){prepareAdminDemo({...job,root:this.root,profile:admin.profile,log:message=>this.log(job,message)});job.demoAdapter=admin.profile;}
         const vite=path.join(job.app,'node_modules/vite/bin/vite.js');
         if(!exists(vite))return this.need(job,'Vite was not installed. Check package.json and the dependency log.');
         this.change(job,{phase:'Building website',progress:65,message:'Building original layouts and assets…'});
         await this.command(job,process.execPath,[vite,'build','--base','/']);
+        if(job.demoAdapter)for(const file of fs.readdirSync(job.app).filter(file=>/schema\.sql$/i.test(file)))fs.copyFileSync(path.join(job.app,file),path.join(job.publicDir,file));
         if(!exists(path.join(job.publicDir,'index.html')))return this.need(job,'Build finished without dist/index.html. Enter the actual output directory in Setup.');
       }
       if(['laravel','php'].includes(job.type)){
@@ -239,6 +251,7 @@ export class Installer {
           if(job.needsMigrations){await this.command(job,job.php,['artisan','migrate','--force']);job.needsMigrations=false;this.persist();}
         }
       }
+      if(!job.adminPath)job.adminPath=discoverAdmin(job.app,job.type).path;
       this.change(job,{phase:'Starting preview',progress:85,message:'Starting and checking the installed website…'});
       await this.startSite(this.sites.find(s=>s.id===job.siteId));
       await this.check(job.id,true);

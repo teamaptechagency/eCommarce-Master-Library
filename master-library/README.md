@@ -16,6 +16,10 @@ Use **Install / Setup** on E-commerce-9 to prepare its separate source copy, upl
 
 Ready upload cards have a **Setup** link to save their admin portal path. Existing supported demo adapters retain password-free login. Unknown uploaded applications use their own admin login and need an application-specific adapter for password-free access; importing a frontend does not supply a missing backend or database. ZIP extraction rejects traversal, symlinks, duplicate entries and Windows reserved paths, with limits of 512 MB compressed / 3 GB extracted / 60,000 entries. SQL uploads are limited to 256 MB. Installation requests require the local page's CSRF token and matching origin.
 
+Installation now discovers admin routes and recognizes the supplied direct-Supabase and StoreContext React dashboard families. Supported sources keep their original dashboard components and receive an **Admin demo** button with a signed, local login. Admin tabs are discovered from the source and appear in the feature sidebar. An already installed site can use **Setup → Detect / enable admin** to rebuild with its supported adapter. Original modified source files are saved privately in the installation's `admin-originals/` folder.
+
+These demo adapters use isolated browser storage on each preview port. The direct Supabase adapter supplies local product/order/category CRUD and image storage; the context adapter uses the source's existing browser fallback. Roles come from the signed local session. Demo changes do not use the uploaded source's remote Supabase project. External courier integrations, live tracking and application-specific database RPCs still require the corresponding backend configuration.
+
 Run `npm test` in this directory. For the local database integration test, set `MASTER_TEST_MYSQL=1`; it uses local root credentials on port 3306, creates a temporary isolated schema/user and removes them after the test.
 
 ## Included websites

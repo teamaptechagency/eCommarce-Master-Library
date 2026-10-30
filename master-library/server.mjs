@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { root, sites } from './sites.mjs';
 import { reactRoutes } from './react-routes.mjs';
 import { Installer } from './installer.mjs';
+import {adminPortalRoutes} from './admin-discovery.mjs';
 
 const port = Number(process.env.MASTER_PORT || 8090);
 const data = path.join(root,'data');
@@ -21,8 +22,17 @@ function syncRuntime(){
   for(const site of sites)if(site.managedUpload)state.set(site.id,{status:site.blocked?(site.installState==='running'?'starting':'blocked'):'online',title:site.subtitle,detail:site.blocked||'Installed from ZIP'});
 }
 async function startUploaded(site){
-  if(await listening(site.port))return;
-  if(site.kind==='uploaded-static')launch(process.execPath,[path.join(root,'uploaded-server.mjs')],site.app,site.id,{MASTER_UPLOAD_PORT:String(site.port),MASTER_UPLOAD_PUBLIC:site.publicDir,MASTER_UPLOAD_SPA:String(site.spa)});
+  if(await listening(site.port)){
+    if(site.kind!=='react-demo')return;
+    let health;try{health=await(await fetch(`http://127.0.0.1:${site.port}/__master/health`,{signal:AbortSignal.timeout(3000)})).json()}catch{throw Error('Restart this uploaded preview to activate the admin adapter.');}
+    if(path.resolve(health.source||'')!==path.resolve(site.app))throw Error('Preview port belongs to another application.');
+    if(health.application==='master-react-source')return;
+    if(health.application!=='master-uploaded-static')throw Error('Unknown preview process. Restart this uploaded preview.');
+    const response=await fetch(`http://127.0.0.1:${site.port}/__master/shutdown`,{method:'POST',headers:{'X-Master-Library':secret},signal:AbortSignal.timeout(3000)});if(!response.ok)throw Error('Could not restart the uploaded preview.');
+    for(let attempt=0;attempt<20&&await listening(site.port);attempt++)await wait(100);
+  }
+  if(site.kind==='react-demo')launch(process.execPath,[path.join(root,'react-server.mjs')],site.app,site.id,{MASTER_LIBRARY_ROOT:root,MASTER_REACT_PORT:String(site.port),MASTER_REACT_APP:site.app});
+  else if(site.kind==='uploaded-static')launch(process.execPath,[path.join(root,'uploaded-server.mjs')],site.app,site.id,{MASTER_LIBRARY_ROOT:root,MASTER_UPLOAD_APP:site.app,MASTER_UPLOAD_PORT:String(site.port),MASTER_UPLOAD_PUBLIC:site.publicDir,MASTER_UPLOAD_SPA:String(site.spa)});
   else launch(site.php,['-S','127.0.0.1:'+site.port,'-t',site.publicDir,path.join(root,'uploaded-router.php')],site.app,site.id,{MASTER_UPLOAD_APP:site.app,MASTER_UPLOAD_PUBLIC:site.publicDir,MASTER_UPLOAD_PORT:String(site.port)});
 }
 let startupDone = false;
@@ -43,7 +53,7 @@ async function database(p,exe,args) {
   for(let i=0;i<30;i++) { if(await listening(p))return; await wait(500); }
 }
 async function exportRoutes(site) {
-  if(site.managedUpload){fs.writeFileSync(path.join(data,site.id+'-routes.json'),JSON.stringify([{path:'/',name:'Home',access:'public'},...(site.admin?[{path:site.admin,name:'Admin portal',access:'admin'}]:[])]));return;}
+  if(site.managedUpload){fs.writeFileSync(path.join(data,site.id+'-routes.json'),JSON.stringify(adminPortalRoutes(site)));return;}
   if(site.kind==='react-demo'){fs.writeFileSync(path.join(data,site.id+'-routes.json'),JSON.stringify(reactRoutes()));return;}
   for(let attempt=0;attempt<3;attempt++)try {
     const response=await fetch(`http://127.0.0.1:${site.port}/__master/routes`,{headers:{'X-Master-Library':secret},signal:AbortSignal.timeout(30000)});
@@ -147,6 +157,7 @@ const server=http.createServer(async(req,res)=>{
         let bytes=0,body='';for await(const chunk of req){bytes+=chunk.length;if(bytes>65536)throw Error('Setup request is too large.');body+=chunk;}
         const config=JSON.parse(body||'{}');
         if(action==='adopt')return send(res,202,await installer.adopt(config.siteId));
+        if(action.startsWith('admin/'))return send(res,202,await installer.enableAdmin(action.slice(6)));
         if(action.startsWith('setup/'))return send(res,202,await installer.setup(action.slice(6),config));
         if(action.startsWith('check/'))return send(res,200,await installer.check(action.slice(6)));
         return send(res,404,{error:'Unknown installation action.'});
@@ -157,7 +168,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/refresh'){await Promise.all(sites.filter(s=>!s.blocked).map(exportRoutes));await refresh();return send(res,200,catalog());}
     if(url.pathname.startsWith('/api/routes/')){
       const id=url.pathname.split('/').pop();if(!sites.some(s=>s.id===id))return send(res,404,{error:'Unknown site'});
-      const site=sites.find(s=>s.id===id);if(site.managedUpload)return send(res,200,[{path:'/',name:'Home',access:'public'},...(site.admin?[{path:site.admin,name:'Admin portal',access:'admin'}]:[])]);
+      const site=sites.find(s=>s.id===id);if(site.managedUpload)return send(res,200,adminPortalRoutes(site));
       const file=path.join(data,id+'-routes.json');return send(res,200,fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):[]);
     }
     if(url.pathname.startsWith('/demo/')){

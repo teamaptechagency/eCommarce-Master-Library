@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import net from 'node:net';
+import crypto from 'node:crypto';
+import {spawn} from 'node:child_process';
+import {root as sourceRoot} from '../sites.mjs';
+test('uploaded React demo requires a signed handoff and keeps its local session and SQL private',async t=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'master-react-demo-')),app=path.join(root,'data/installations/test/source'),dist=path.join(app,'dist');
+  fs.mkdirSync(dist,{recursive:true});fs.writeFileSync(path.join(dist,'index.html'),'<html><head><title>Source admin</title></head><body>Original dashboard</body></html>');fs.writeFileSync(path.join(dist,'schema.sql'),'CREATE TABLE example (id int);');
+  const port=await new Promise(resolve=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p))})});
+  const secret=crypto.randomBytes(32).toString('hex'),site={id:'upload-test',kind:'react-demo',app,port,admin:'/admin',managedUpload:true,adminTabs:['orders','products']};
+  fs.writeFileSync(path.join(root,'data/runtime.json'),JSON.stringify({secret,sites:[site]}));
+  let stderr='';const child=spawn(process.execPath,[path.join(sourceRoot,'react-server.mjs')],{env:{...process.env,MASTER_LIBRARY_ROOT:root,MASTER_REACT_APP:app,MASTER_REACT_PORT:String(port)},windowsHide:true,stdio:['ignore','ignore','pipe']});child.stderr.on('data',chunk=>stderr+=chunk);
+  t.after(async()=>{if(child.exitCode===null){child.kill();await new Promise(resolve=>child.once('exit',resolve))}fs.rmSync(root,{recursive:true,force:true});});
+  const base='http://127.0.0.1:'+port;let ready=false;
+  for(let i=0;i<40;i++){try{if((await fetch(base+'/__master/health')).ok){ready=true;break}}catch{}await new Promise(resolve=>setTimeout(resolve,50));}
+  assert.ok(ready,stderr);
+  assert.equal((await fetch(base+'/admin',{redirect:'manual'})).status,302);assert.equal((await(await fetch(base+'/__master/session')).json()).user,null);assert.equal((await fetch(base+'/schema.sql')).status,403);
+  const expires=Math.floor(Date.now()/1000)+60,next='/admin?tab=products';const signature=crypto.createHmac('sha256',secret).update(site.id+'|'+expires+'|'+next).digest('hex');
+  const handoff='/__master/demo-login?'+new URLSearchParams({site:site.id,expires,next,signature});
+  assert.equal((await fetch(base+handoff.replace(signature,'0'.repeat(64)),{redirect:'manual'})).status,403);
+  const response=await fetch(base+handoff,{redirect:'manual'});assert.equal(response.status,302);const setCookie=response.headers.getSetCookie()[0];assert.match(setCookie,/HttpOnly/);const cookie=setCookie.split(';')[0];
+  const html=await(await fetch(base+next,{headers:{Cookie:cookie}})).text();const bootstrap=JSON.parse(html.match(/window\.__MASTER_LIBRARY_DEMO__=([^;]+);/)[1]);assert.equal(bootstrap.user.role,'admin');assert.ok(!html.includes('littlehug_products'));
+  assert.equal((await(await fetch(base+'/__master/session',{headers:{Cookie:cookie}})).json()).user.role,'admin');assert.equal((await fetch(base+'/schema.sql',{headers:{Cookie:cookie}})).status,200);
+  assert.equal((await fetch(base+'/__master/logout',{method:'POST',headers:{Cookie:cookie}})).status,403);assert.equal((await fetch(base+'/__master/logout',{method:'POST',headers:{Cookie:cookie,'X-Master-CSRF':bootstrap.csrf}})).status,200);assert.equal((await(await fetch(base+'/__master/session',{headers:{Cookie:cookie}})).json()).user,null);
+  assert.equal((await fetch(base+'/__master/shutdown',{method:'POST'})).status,403);
+});
