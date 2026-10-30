@@ -6,6 +6,7 @@ import {spawn} from 'node:child_process';
 import {pipeline} from 'node:stream/promises';
 import {Transform} from 'node:stream';
 import {extractZip} from './archive.mjs';
+import {repairViteEsbuildPeer} from './npm-compatibility.mjs';
 
 const exists=fs.existsSync;
 const readJSON=file=>JSON.parse(fs.readFileSync(file,'utf8'));
@@ -134,7 +135,7 @@ export class Installer {
       const timer=setTimeout(()=>{child.kill();finish(Error('Installation command timed out. Open Setup and retry.'))},timeout);timer.unref();
       const finish=error=>{if(done)return;done=true;clearTimeout(timer);error?reject(error):resolve(tail)};
       child.on('error',()=>finish(Error('Required runtime is unavailable: '+path.basename(exe))));
-      child.on('exit',code=>finish(code===0?null:Error('Installation command failed ('+path.basename(exe)+'). See the progress log, correct the settings and retry.')));
+      child.on('exit',code=>finish(code===0?null:Object.assign(Error('Installation command failed ('+path.basename(exe)+'). See the progress log, correct the settings and retry.'),{output:tail,exitCode:code})));
       child.stdin.on('error',()=>{});child.stdin.end(input||'');
     });
   }
@@ -173,7 +174,16 @@ export class Installer {
         writeEnv(job.app,{},job.config?.environment);
         const npm=path.join(path.dirname(process.execPath),'node_modules/npm/bin/npm-cli.js');
         if(!exists(npm))return this.need(job,'Node/npm is missing. Install Node.js with npm, then retry.');
-        if(!exists(path.join(job.app,'node_modules/.package-lock.json')))await this.command(job,process.execPath,[npm,'install','--ignore-scripts','--no-audit','--no-fund']);
+        const dependencyHash=()=>crypto.createHash('sha256').update(fs.readFileSync(path.join(job.app,'package.json'))).update(exists(path.join(job.app,'package-lock.json'))?fs.readFileSync(path.join(job.app,'package-lock.json')):'').digest('hex');
+        if(!exists(path.join(job.app,'node_modules/.package-lock.json'))||job.dependenciesInstalledHash!==dependencyHash()){
+          const args=[npm,'install','--ignore-scripts','--no-audit','--no-fund'];
+          try{await this.command(job,process.execPath,args);}
+          catch(error){
+            if(!repairViteEsbuildPeer({app:job.app,backupDirectory:job.directory,report:error.output,log:message=>this.log(job,message)}))throw error;
+            await this.command(job,process.execPath,args);
+          }
+          job.dependenciesInstalledHash=dependencyHash();this.persist();
+        }
         const vite=path.join(job.app,'node_modules/vite/bin/vite.js');
         if(!exists(vite))return this.need(job,'Vite was not installed. Check package.json and the dependency log.');
         this.change(job,{phase:'Building website',progress:65,message:'Building original layouts and assets…'});

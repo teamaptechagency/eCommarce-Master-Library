@@ -67,14 +67,18 @@ test('Laravel detection precedes frontend package and missing folders give a rea
   assert.equal(detectSource(root).type,'laravel');
   const installer=new Installer({root:temporary(t),sites:[{id:'empty',blocked:'No source'}]});await assert.rejects(installer.adopt('empty'),/Upload complete ZIP/);
 });
-test('Vite ZIP installs local dependencies and builds its original frontend and CSS',async t=>{
+test('Vite ZIP repairs an incompatible esbuild peer, installs dependencies and builds its original frontend',async t=>{
   const root=temporary(t),sites=[],children=[];
   t.after(async()=>{for(const child of children)if(child.exitCode===null){child.kill();await new Promise(resolve=>child.once('exit',resolve));}});
   const installer=new Installer({root,sites,startSite:async site=>{children.push(spawn(process.execPath,[path.join(source,'uploaded-server.mjs')],{env:{...process.env,MASTER_UPLOAD_PORT:String(site.port),MASTER_UPLOAD_PUBLIC:site.publicDir,MASTER_UPLOAD_SPA:'true'},windowsHide:true,stdio:'ignore'}));}});
   const dependencies=Object.fromEntries(['vite','react','react-dom'].map(name=>[name,'file:'+path.join(source,'node_modules',name).replaceAll('\\','/')]));
-  const body=zip([['store/package.json',JSON.stringify({name:'zip-install-fixture',private:true,type:'module',dependencies})],['store/index.html','<title>React source fixture</title><div id="root"></div><script type="module" src="/src/main.js"></script>'],['store/src/main.js',"import React from 'react';import{createRoot}from'react-dom/client';import './store.css';createRoot(document.getElementById('root')).render(React.createElement('h1',null,'Original uploaded layout'));"],['store/src/store.css','h1{color:rgb(20,90,50)}']]);
+  // A registry package exercises npm's real peer resolution; linked packages
+  // can reuse their existing dependency tree without checking the root peer.
+  dependencies.vite=JSON.parse(fs.readFileSync(path.join(source,'node_modules/vite/package.json'),'utf8')).version;
+  const body=zip([['store/package.json',JSON.stringify({name:'zip-install-fixture',private:true,type:'module',dependencies,devDependencies:{esbuild:'^0.25.0'}})],['store/index.html','<title>React source fixture</title><div id="root"></div><script type="module" src="/src/main.js"></script>'],['store/src/main.js',"import React from 'react';import{createRoot}from'react-dom/client';import './store.css';createRoot(document.getElementById('root')).render(React.createElement('h1',null,'Original uploaded layout'));"],['store/src/store.css','h1{color:rgb(20,90,50)}']]);
   const result=await installer.upload(uploadRequest(body),{filename:'react-shop.zip'});await installer.queue;const job=installer.get(result.id);
   assert.equal(job.status,'ready',JSON.stringify(installer.public(job)));assert.equal(job.type,'vite');assert.ok(fs.existsSync(path.join(job.publicDir,'index.html')));assert.ok(job.logs.some(row=>row.text.includes('built in')));
+  assert.ok(job.logs.some(row=>row.text.includes('Compatibility repair: esbuild')));assert.equal(JSON.parse(fs.readFileSync(path.join(job.directory,'package.json.before-peer-repair'),'utf8')).devDependencies.esbuild,'^0.25.0');assert.ok(job.dependenciesInstalledHash);
   const response=await fetch('http://127.0.0.1:'+job.port+'/catalog');assert.equal(response.status,200);assert.match(await response.text(),/React source fixture/);
 });
 test('missing Laravel SQL stops with an upload and retry action before database changes',async t=>{
