@@ -7,6 +7,8 @@ export function buildVercel(destination=path.join(root,'dist')) {
   fs.mkdirSync(destination,{recursive:true});
   // Copy an explicit public allowlist. Never publish the repository or runtime data.
   for(const file of ['index.html','app.js','styles.css','installer-ui.js','cloud-library.js'])fs.copyFileSync(path.join(root,'public',file),path.join(destination,file));
+  const index=path.join(destination,'index.html');
+  fs.writeFileSync(index,fs.readFileSync(index,'utf8').replace('<html lang="en">','<html lang="en" data-runtime="cloud">'));
   fs.mkdirSync(path.join(destination,'cloud'),{recursive:true});
   const catalog=sites.map(site=>({
     id:site.id,name:site.name,subtitle:site.subtitle,title:site.sourceTitle||site.subtitle,

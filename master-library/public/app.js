@@ -50,7 +50,7 @@ function render(){
   }).join(''):`<div class="empty-state">No websites match this view.<br>Try another search or filter.</div>`;
 }
 async function load(){
-  if(cloudMode)sites=await loadCloudCatalog();
+  if(cloudMode||document.documentElement.dataset.runtime==='cloud')sites=await loadCloudCatalog();
   else {const response=await fetch('/api/sites');sites=response.ok?await response.json():await loadCloudCatalog();if(!Array.isArray(sites))throw Error('Invalid library response');}
   if(activeSite&&!sites.some(s=>s.id===activeSite.id)){const replacement=sites.find(s=>activeSite.archiveHash&&s.archiveHash===activeSite.archiveHash&&!s.blocked);if(replacement)navigatePortal(replacement,adminMode?replacement.admin:'/',adminMode);else back();}
   $('#category-nav').innerHTML=[...new Set(sites.filter(s=>!s.blocked).map(s=>s.category))].map(c=>`<button class="nav-item category-item ${category===c?'active':''}" data-category="${escape(c)}"><span class="category-dot"></span>${escape(c)}</button>`).join('');
