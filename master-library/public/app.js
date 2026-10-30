@@ -111,3 +111,11 @@ document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA','SE
 try{await load();await loadRoutes();const params=new URLSearchParams(location.hash.slice(1));const site=sites.find(s=>s.id===params.get('site'));if(site&&!site.blocked)navigatePortal(site,params.get('mode')==='admin'?site.admin:'/',params.get('mode')==='admin');const setupSite=sites.find(s=>s.id===params.get('setup'));if(setupSite)openSetup(setupSite);}catch{ $('#site-grid').innerHTML='<div class="empty-state">The local library is not responding.<br>Run Start-MasterLibrary.cmd and refresh this page.</div>'; }
 setInterval(async()=>{try{await load();if(sites.some(s=>!s.blocked&&!(routes[s.id]||[]).length))await loadRoutes()}catch{}},15000);
 window.addEventListener('library-updated',async()=>{try{await load();await loadRoutes()}catch{}});
+window.addEventListener('hashchange',()=>{
+  const params=new URLSearchParams(location.hash.slice(1));
+  const setupSite=sites.find(site=>site.id===params.get('setup'));
+  if(setupSite){openSetup(setupSite);return;}
+  const site=sites.find(site=>site.id===params.get('site'));
+  if(site){const admin=params.get('mode')==='admin';if(activeSite?.id!==site.id||adminMode!==admin)navigatePortal(site,admin&&site.admin?site.admin:'/',admin&&Boolean(site.admin));}
+  else if(!location.hash&&activeSite)back();
+});
