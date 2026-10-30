@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#203e35">
+  <meta name="description" content="Tawhid's local ecommerce master library. Explore every storefront, admin demo and feature in one workspace.">
+  <title>Commerce Master Library · Tawhid</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%23203e35'/%3E%3Cpath d='M11 13h7v7h-7zm11 0h7v7h-7zM11 24h7v7h-7zm11 0h7v7h-7z' fill='%23edf3d8'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="library-sidebar">
+      <a href="#" class="brand"><span class="brand-icon">▦</span><span>commerce<span class="brand-sub">MASTER LIBRARY</span></span></a>
+      <div class="workspace-badge"><span class="workspace-icon">T</span><span>Tawhid’s workspace<small>Local collection</small></span><span class="local-dot"></span></div>
+      <div class="nav-label">WORKSPACE</div>
+      <nav id="main-nav" aria-label="Library navigation">
+        <button class="nav-item active" data-view="all"><span>▦</span>All websites <b id="nav-count">8</b></button>
+        <button class="nav-item" data-view="public"><span>◉</span>Public portals</button>
+        <button class="nav-item" data-view="admin"><span>◇</span>Admin demos</button>
+        <button class="nav-item" data-view="blocked"><span>◷</span>Needs setup <b>2</b></button>
+        <button class="nav-item" data-view="favorites"><span>☆</span>Favorites</button>
+      </nav>
+      <div class="nav-label category-label">COLLECTIONS</div>
+      <nav id="category-nav" aria-label="Website categories"></nav>
+      <div class="sidebar-bottom"><span class="stack-icon">⌘</span><strong>One launch. Every portal.</strong><p>Public storefronts and direct admin demos, together.</p><span class="local-label"><i></i> Runs on your computer</span></div>
+      <div class="sidebar-footer"><span class="avatar">T</span><span>Tawhid<small>Personal workspace</small></span><span>↗</span></div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><div class="topbar-leading"><button type="button" class="icon-button" id="sidebar-toggle" aria-controls="library-sidebar" aria-expanded="true" aria-label="Hide library sidebar" title="Hide library sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path></svg></button><div class="breadcrumbs"><span class="breadcrumb">Workspace</span><span class="crumb-divider">/</span><span id="crumb">All websites</span></div></div><div class="top-actions"><span class="local-chip"><i></i> LOCAL WORKSPACE</span><button class="icon-button" id="refresh" aria-label="Refresh website status" title="Refresh website status">↻</button><span class="avatar top-avatar">T</span></div></header>
+      <div id="collection-view">
+        <section class="heading-row"><div><div class="eyebrow">YOUR ECOMMERCE TOOLKIT</div><h1 id="page-title">A home for every storefront<span>.</span></h1><p class="intro">Explore your websites, discover their features, and step straight into any admin demo.</p></div><div class="collection-stamp"><span>↗</span><small>ONE WORKSPACE<br>ENDLESS POSSIBILITIES</small></div></section>
+        <section class="metrics" aria-label="Collection status"><div><span class="metric-icon">▦</span><span><strong id="total-count">8</strong><small>Websites in your library</small></span></div><div><span class="metric-icon online-icon">◉</span><span><strong id="online-count">—</strong><small>Public portals online</small></span></div><div><span class="metric-icon">◇</span><span><strong id="demo-count">6</strong><small>Direct admin demos</small></span></div><div><span class="metric-icon muted-icon">◷</span><span><strong id="blocked-count">2</strong><small>Waiting for setup</small></span></div></section>
+        <section class="collection-toolbar"><div class="section-title"><h2 id="collection-title">All websites</h2><span id="result-count">8 websites</span></div><label class="search"><span>⌕</span><input id="search" type="search" placeholder="Search websites or features…" aria-label="Search websites or features"><kbd>/</kbd></label></section>
+        <div class="filter-row"><div class="status-filters"><button class="filter active" data-status="all">All</button><button class="filter" data-status="online">Online <span id="online-filter-count">0</span></button><button class="filter" data-status="blocked">Needs setup <span>2</span></button></div><div class="sort-label">Sorted by collection order <span>↓</span></div></div>
+        <section class="site-grid" id="site-grid" aria-live="polite"><div class="empty-state">Starting your local collection…</div></section>
+        <footer class="main-footer"><span><i></i> Your projects stay on this computer.</span><span>Commerce Master Library <span class="footer-version">v1.0</span></span></footer>
+      </div>
+      <section id="workspace-view" hidden>
+        <div class="portal-toolbar"><button id="back" class="text-button">← Library</button><select id="site-select" aria-label="Choose website"></select><div class="portal-mode"><button id="mode-public" class="active">Public portal</button><button id="mode-admin">Admin demo ↗</button></div><button id="open-tab" class="text-button">Open in new tab ↗</button></div>
+        <div class="portal-layout"><aside class="feature-sidebar"><div class="feature-heading"><span class="eyebrow">EXPLORE WEBSITE</span><h2 id="feature-site-name"></h2><p id="feature-site-title"></p></div><label class="feature-search"><input id="feature-search" type="search" placeholder="Find a feature…" aria-label="Find a feature"></label><div class="feature-tabs"><button class="active" data-access="all">All</button><button data-access="public">Public</button><button data-access="admin">Admin</button></div><div id="feature-list"></div><small class="feature-note">Admin links sign you in automatically. Pages with an ID ask for the record to open.</small></aside><div class="portal-frame-wrap"><div class="address-bar"><span>◉</span><span id="current-address"></span><button id="reload-frame" aria-label="Reload portal">↻</button></div><div id="frame-loading">Opening website…</div><iframe id="portal-frame" title="Website preview" referrerpolicy="same-origin"></iframe></div></div>
+      </section>
+    </main>
+  </div>
+  <dialog id="parameter-dialog"><form method="dialog"><h2>Choose a record</h2><p id="parameter-path"></p><div id="parameter-fields"></div><div class="dialog-actions"><button value="cancel" formnovalidate class="button secondary">Cancel</button><button id="parameter-open" value="open" class="button primary">Open page ↗</button></div></form></dialog>
+  <div id="toast" role="status" hidden></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

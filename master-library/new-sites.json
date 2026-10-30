@@ -1,0 +1,43 @@
+[
+  {
+    "id": "new-aaryan-mart-full-zip",
+    "name": "Aaryan Mart",
+    "subtitle": "Tuktak Shopping · imported React source",
+    "initials": "AM",
+    "color": "#377b4e",
+    "app": "data/new-apps/18f7261eb05f",
+    "port": 8401,
+    "admin": "/admin",
+    "kind": "react-demo",
+    "category": "New imports",
+    "description": "Original storefront and admin with a local browser demo. One archive copy retained.",
+    "features": [
+      "Storefront",
+      "Products",
+      "Cart & checkout",
+      "Orders",
+      "Admin demo",
+      "Banners"
+    ],
+    "source": "New/Aaryan Mart Full {ZIP}.zip",
+    "sourceTitle": "Freshko - Online Organic Herbs, Spices & Dry Fruits Store",
+    "archiveHash": "18F7261EB05FCB40846C88EB9218B542D7C2102702DF70C27CC8605A5B1D37B7",
+    "duplicateCount": 1
+  },
+  {
+    "id": "new-ghorer-bazazr",
+    "name": "ghorer bazazr",
+    "subtitle": "Muba Gadgets · incomplete archive",
+    "initials": "GB",
+    "color": "#8a8790",
+    "admin": "/admin",
+    "kind": "unavailable",
+    "category": "Needs setup",
+    "description": "The archive contains setup files but no src/main.tsx, components or application source.",
+    "features": [],
+    "source": "New/ghorer bazazr.zip",
+    "archiveHash": "58691C29DE3C761CBD799C8077FE07A0D229952F8DA05C825CCD78B3F16A9D19",
+    "duplicateCount": 1,
+    "blocked": "Missing src/main.tsx and the entire src directory. The supplied ZIP cannot run without its application files."
+  }
+]

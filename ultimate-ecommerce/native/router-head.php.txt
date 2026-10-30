@@ -1,0 +1,31 @@
+<?php
+$root=dirname(__DIR__);$runtime=json_decode(file_get_contents($root.'/data/native-runtime.json'),true);
+$source=current(array_filter($runtime['sources'],fn($s)=>$s['id']===getenv('ULTIMATE_SOURCE_ID')));
+if(!$source||!in_array($_SERVER['REMOTE_ADDR']??'',['127.0.0.1','::1'],true)||!in_array($_SERVER['HTTP_HOST']??'',['127.0.0.1:'.$source['port'],'localhost:'.$source['port']],true)){http_response_code(403);exit('Local source engine only');}
+$site=['id'=>$source['id'],'app'=>$source['engine'],'port'=>$source['port'],'admin'=>$source['admin'],'kind'=>$source['family']==='footstep'?'sohag':$source['family']];
+$uri=rawurldecode(parse_url($_SERVER['REQUEST_URI'],PHP_URL_PATH)?:'/');
+if($uri==='/__native/health'){header('Content-Type: application/json');echo json_encode(['source'=>$site['id'],'application'=>'astrallab-native']);exit;}
+if(preg_match('#^/images/required/theme-(?:footer-|favicon-)?logo\.png$#',$uri)&&$source['id']==='shopperzz'){header('Content-Type: image/svg+xml');readfile($root.'/public/assets/astrallab-logo.svg');exit;}
+if(preg_match('#(?:^|/)\.#',$uri)||preg_match('#^/(?:bootstrap|config|database|app|resources|routes|storage/logs)(?:/|$)#i',$uri)){http_response_code(404);exit('Not found');}
+// Shared catalog images keep the source's native image URLs and conversion names.
+$snapshot=json_decode(file_get_contents($root.'/data/native-snapshot.json'),true);
+$shared=null;
+if(preg_match('#^/storage/(9\d{6,})/#',$uri,$m)){foreach($snapshot['products'] as $p)if(9000000+$p['id']==(int)$m[1]){$shared=$p['image'];break;}}
+if(str_contains($uri,'/astrallab/'))foreach($snapshot['products'] as $p)if(basename($p['image'])===basename($uri)){$shared=$p['image'];break;}
+if(preg_match('#^/storage/assets/(product-[0-9]+\.png)$#',$uri,$m))$shared='/assets/'.$m[1];
+if(str_starts_with($uri,'/storage/__ultimate/engine/')){header('Location: '.substr($uri,8));exit;}
+if(preg_match('#^/assets/product-([0-9]+)(?:-[0-9]+x[0-9]+)?\.png$#',$uri,$m))$shared='/assets/product-'.$m[1].'.png';
+if($shared){$sameNativePath='/__ultimate/engine/'.$site['id'].$uri;if((str_starts_with($shared,'/__ultimate/engine/')||preg_match('#^https?://#',$shared))&&$shared!==$sameNativePath){header('Location: '.$shared);exit;}$file=realpath($root.'/public'.$shared);if($file&&str_starts_with(str_replace('\\','/',$file),str_replace('\\','/',realpath($root.'/public')).'/')){header('Content-Type: '.(mime_content_type($file)?:'image/png'));readfile($file);exit;}}
+$docroot=is_file($site['app'].'/public/index.php')?$site['app'].'/public':$site['app'];
+$asset=null;$candidates=[$docroot.$uri];
+if(str_starts_with($uri,'/public/')&&$docroot!==$site['app'])array_unshift($candidates,$docroot.substr($uri,7));
+if(str_starts_with($uri,'/storage/')){array_unshift($candidates,$site['app'].'/storage/app/public/'.substr($uri,9));$candidates[]=$source['source'].'/storage/app/public/'.substr($uri,9);}
+foreach($candidates as $file){$candidate=realpath($file);if(!$candidate||!is_file($candidate))continue;$allowed=false;
+ foreach([$docroot,$source['source'].'/public',$site['app'].'/storage/app/public',$source['source'].'/storage/app/public'] as $base){$base=realpath($base);if($base&&str_starts_with(str_replace('\\','/',$candidate),str_replace('\\','/',$base).'/'))$allowed=true;}
+ if($docroot===$site['app']&&preg_match('#^/vendor(?:/|$)#i',$uri))$allowed=false;
+ if($allowed&&in_array(strtolower(pathinfo($candidate,PATHINFO_EXTENSION)),['css','js','json','png','jpg','jpeg','gif','svg','webp','ico','woff','woff2','ttf','eot','map','mp4','webm','pdf','avif','html'],true)){$asset=$candidate;break;}}
+if($asset){$ext=strtolower(pathinfo($asset,PATHINFO_EXTENSION));$mime=['css'=>'text/css','js'=>'text/javascript','json'=>'application/json','svg'=>'image/svg+xml','woff'=>'font/woff','woff2'=>'font/woff2','ttf'=>'font/ttf','html'=>'text/html'];header('Content-Type: '.($mime[$ext]??mime_content_type($asset)));readfile($asset);exit;}
+chdir($site['app']);define('LARAVEL_START',microtime(true));require __DIR__.'/common.php';nativeAutoload($source);$app=require $site['app'].'/bootstrap/app.php';
+$request=Illuminate\Http\Request::capture();$app->instance('request',$request);$kernel=$app->make(Illuminate\Contracts\Http\Kernel::class);$kernel->bootstrap();
+config(['app.url'=>'http://127.0.0.1:8200','session.cookie'=>'ultimate_native_'.$site['id'],'session.domain'=>null,'session.secure'=>false,'app.debug'=>false]);
+$app->make('session')->driver()->setName('ultimate_native_'.$site['id']);Illuminate\Support\Facades\URL::forceRootUrl('http://127.0.0.1:8200');

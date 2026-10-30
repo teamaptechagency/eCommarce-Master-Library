@@ -1,0 +1,7 @@
+{
+  "name": "ultimate-ecommarce-by-astrallab",
+  "private": true,
+  "type": "module",
+  "scripts": {"start": "node native/gateway.mjs", "start:control": "node server.mjs", "test": "node --test test/*.test.mjs", "verify:native":"node native/verify-native.mjs", "verify:sync":"node native/verify-sync.mjs"},
+  "engines": {"node": ">=24"}
+}
