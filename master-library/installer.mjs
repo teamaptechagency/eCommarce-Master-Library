@@ -8,6 +8,7 @@ import {Transform} from 'node:stream';
 import {extractZip} from './archive.mjs';
 import {repairViteEsbuildPeer} from './npm-compatibility.mjs';
 import {discoverAdmin,prepareAdminDemo} from './admin-discovery.mjs';
+import {installationPaths,moveInstallation} from './installation-trash.mjs';
 
 const exists=fs.existsSync;
 const readJSON=file=>JSON.parse(fs.readFileSync(file,'utf8'));
@@ -57,17 +58,19 @@ function writeEnv(app,values,extra='') {
   fs.writeFileSync(file,source+'\n');
 }
 export class Installer {
-  constructor({root,sites,onChange=()=>{},startSite=async()=>{}}) {
-    this.root=root;this.sites=sites;this.onChange=onChange;this.startSite=startSite;
+  constructor({root,sites,onChange=()=>{},startSite=async()=>{},stopSite=async()=>{}}) {
+    this.root=root;this.sites=sites;this.onChange=onChange;this.startSite=startSite;this.stopSite=stopSite;this.busy=new Set();
     this.base=path.join(root,'data/installations');fs.mkdirSync(this.base,{recursive:true});
     this.file=path.join(this.base,'jobs.json');this.jobs=exists(this.file)?readJSON(this.file):[];
-    for(const job of this.jobs){delete job.enqueued;if(['running','queued','uploading'].includes(job.status)){job.status='setup';job.message='Installation was interrupted. Choose Install / Retry to continue.';}this.syncSite(job);}
+    for(const job of this.jobs){delete job.enqueued;if(['trashing','restoring'].includes(job.status)){const paths=installationPaths(root,job);job.status=exists(paths.trash)&&!exists(paths.directory)?'trashed':job.trash.previousStatus;if(job.status!=='trashed')delete job.trash;}if(['running','queued','uploading'].includes(job.status)){job.status='setup';job.message='Installation was interrupted. Choose Install / Retry to continue.';}this.syncSite(job);}
     this.queue=Promise.resolve();this.persist();
   }
   persist(){const temp=this.file+'.tmp';fs.writeFileSync(temp,JSON.stringify(this.jobs,null,2));fs.renameSync(temp,this.file);}
   public(job){return {id:job.id,siteId:job.siteId,name:job.name,filename:job.filename,status:job.status,phase:job.phase,progress:job.progress||0,message:job.message,type:job.type,databaseRequired:job.type==='laravel'||Boolean(job.wordpress),missing:job.missing||[],logs:(job.logs||[]).slice(-100),adminPath:job.adminPath||'',publicDirectory:job.publicDir&&job.app?path.relative(job.app,job.publicDir):'',nativeSetup:job.nativeSetup?`http://127.0.0.1:${job.port}${job.nativeSetup}`:null,createdAt:job.createdAt};}
-  list(){return this.jobs.map(j=>this.public(j)).reverse();}
+  list(){return this.jobs.filter(j=>j.status!=='trashed').map(j=>this.public(j)).reverse();}
+  trashList(){return this.jobs.filter(j=>j.status==='trashed').map(j=>({id:j.id,siteId:j.siteId,name:j.name,filename:j.filename,deletedAt:j.trash.deletedAt,previousStatus:j.trash.previousStatus})).reverse();}
   get(id){const job=this.jobs.find(j=>j.id===id);if(!job)throw Error('Installation not found.');return job;}
+  getActive(id){const job=this.get(id);if(['trashed','trashing','restoring'].includes(job.status)||this.busy.has(id))throw Error('This installation is in Trash or is being moved. Restore it before making changes.');return job;}
   log(job,message){
     let text=String(message).replace(/\x1b\[[0-9;]*m/g,'').trim();
     for(const value of [job.config?.dbPassword,job.database?.password,...Object.values(job.config?.environmentValues||{})])if(value)text=text.replaceAll(String(value),'[private]');
@@ -76,6 +79,7 @@ export class Installer {
   }
   change(job,values){Object.assign(job,values);this.syncSite(job);this.persist();this.onChange();}
   syncSite(job){
+    if(job.status==='trashed'){const index=this.sites.findIndex(site=>site.id===job.siteId);if(index>=0)this.sites.splice(index,1);return;}
     if(!job.siteId||['duplicate','superseded'].includes(job.status))return;
     let site=this.sites.find(s=>s.id===job.siteId);
     if(!site){site={id:job.siteId,initials:job.name.split(/\s+/).map(s=>s[0]).join('').replace(/[^\p{L}\p{N}]/gu,'').slice(0,2).toUpperCase()||'WS',color:'#46796a',category:'ZIP uploads',features:[]};this.sites.push(site);}
@@ -92,7 +96,7 @@ export class Installer {
   async upload(req,{name,filename,replaceSiteId}={}) {
     if(!filename?.toLowerCase().endsWith('.zip'))throw Error('Choose a .zip website archive.');
     if(replaceSiteId&&!this.sites.some(s=>s.id===replaceSiteId&&s.blocked))throw Error('Only incomplete sites can be replaced.');
-    if(replaceSiteId&&this.jobs.some(j=>j.siteId===replaceSiteId&&(j.status==='running'||j.enqueued)))throw Error('Wait for the current installation to finish before replacing its source.');
+    if(replaceSiteId&&this.jobs.some(j=>j.siteId===replaceSiteId&&(['running','trashing','restoring'].includes(j.status)||j.enqueued)))throw Error('Wait for the current installation operation to finish before replacing its source.');
     const id=crypto.randomBytes(8).toString('hex'),directory=path.join(this.base,id);fs.mkdirSync(directory);
     const file=path.join(directory,'source.zip');let hash;
     try{hash=await this.receive(req,file,512*1024**2)}catch(e){fs.rmSync(directory,{recursive:true,force:true});throw e;}
@@ -103,7 +107,7 @@ export class Installer {
     this.jobs.push(job);this.change(job,{message:'Queued for automatic installation.'});this.enqueue(job);return this.public(job);
   }
   async adopt(siteId){
-    const previous=this.jobs.find(j=>j.siteId===siteId);if(previous)return this.public(previous);
+    const previous=this.jobs.findLast(j=>j.siteId===siteId&&j.status!=='superseded');if(previous){if(previous.status==='trashed')throw Error('Restore this installation from Trash first.');return this.public(previous);}
     const site=this.sites.find(s=>s.id===siteId);if(!site?.blocked)throw Error('Choose a site that requires installation.');
     if(!site.app||!exists(site.app))throw Error('Source is incomplete. Use Upload complete ZIP to install this website.');
     const id=crypto.randomBytes(8).toString('hex');
@@ -111,8 +115,35 @@ export class Installer {
     fs.mkdirSync(job.directory);this.jobs.push(job);this.change(job,{message:'Preparing a separate working copy of the source.'});this.enqueue(job);return this.public(job);
   }
   enqueue(job){if(job.status==='running'||job.enqueued)return;job.enqueued=true;this.queue=this.queue.catch(()=>{}).then(async()=>{delete job.enqueued;await this.install(job)});}
+  async trashInstallation(id){
+    const job=this.getActive(id);
+    if(!['ready','setup'].includes(job.status)||job.enqueued||this.jobs.some(other=>other.siteId===job.siteId&&(other.enqueued||other.status==='running')))throw Error('Wait for installation to finish before deleting it.');
+    const site=this.sites.find(site=>site.id===job.siteId&&site.setupId===job.id);if(!site)throw Error('Only the current installed copy can be deleted.');
+    const paths=installationPaths(this.root,job),previousStatus=job.status;
+    if(!exists(paths.directory)||exists(paths.trash))throw Error('Installation files are missing or already in Trash.');
+    job.trash={directory:paths.trash,previousStatus,deletedAt:new Date().toISOString(),site:{...site}};job.status='trashing';this.busy.add(id);this.persist();
+    try{
+      await this.stopSite(site);await moveInstallation(this.root,job);
+      job.status='trashed';this.syncSite(job);this.persist();this.onChange();return {ok:true,id,siteId:job.siteId,name:job.name};
+    }catch(error){
+      if(exists(paths.trash)&&!exists(paths.directory)){job.status='trashed';this.syncSite(job);this.persist();this.onChange();throw Error('Files moved to Trash. Refresh the library: '+error.message);}
+      job.status=previousStatus;delete job.trash;this.syncSite(job);this.persist();this.onChange();
+      if(previousStatus==='ready')try{await this.startSite(site)}catch{}
+      throw Error('Could not move the installation to Trash: '+error.message);
+    }finally{this.busy.delete(id);}
+  }
+  async restoreInstallation(id){
+    const job=this.get(id);if(job.status!=='trashed'||this.busy.has(id))throw Error('Choose an installation in Trash.');
+    if(this.sites.some(site=>site.id===job.siteId||job.hash&&site.archiveHash?.toLowerCase()===job.hash.toLowerCase()))throw Error('This website is already in the library. Restore would create a duplicate.');
+    installationPaths(this.root,job);const previousStatus=job.trash.previousStatus,snapshot=job.trash.site;
+    job.status='restoring';this.busy.add(id);this.persist();
+    try{await moveInstallation(this.root,job,true);}catch(error){job.status='trashed';this.persist();this.busy.delete(id);throw Error('Could not restore the installation: '+error.message);}
+    delete job.trash;job.status=previousStatus;this.sites.push({...snapshot});this.syncSite(job);this.persist();this.onChange();
+    try{if(previousStatus==='ready'){await this.startSite(this.sites.find(site=>site.id===job.siteId));await this.checkPreview(job,true);}}catch(error){this.need(job,'Files restored. Preview needs setup: '+error.message);}finally{this.busy.delete(id);}
+    return this.public(job);
+  }
   async enableAdmin(id){
-    const job=this.get(id);if(job.status!=='ready'||job.enqueued)throw Error('Finish the current installation before enabling admin.');
+    const job=this.getActive(id);if(job.status!=='ready'||job.enqueued)throw Error('Finish the current installation before enabling admin.');
     const discovery=discoverAdmin(job.app,job.type);
     if(!discovery.path)throw Error('No supported admin route was found in this source. Enter its actual admin path in Setup.');
     job.adminPath||=discovery.path;job.adminTabs=discovery.tabs;
@@ -120,7 +151,7 @@ export class Installer {
     this.change(job,{status:'queued',phase:'Preparing admin demo',message:'Rebuilding the original dashboard with local demo access…'});this.enqueue(job);return this.public(job);
   }
   async setup(id,config){
-    const job=this.get(id);if(job.enqueued||job.status==='running')throw Error('This installation is already running.');
+    const job=this.getActive(id);if(job.enqueued||job.status==='running')throw Error('This installation is already running.');
     if(job.status==='superseded')throw Error('Use the latest source ZIP for this website.');
     const adminPath=String(config.adminPath||'').trim();if(adminPath&&(!adminPath.startsWith('/')||adminPath.startsWith('//')||/[\\\r\n]/.test(adminPath)))throw Error('Admin path must be a local path, for example /admin.');
     if(job.status==='ready'){this.change(job,{adminPath});return this.public(job);}
@@ -132,7 +163,7 @@ export class Installer {
     job.adminPath=adminPath;
     this.change(job,{status:'queued',message:'Setup saved. Continuing installation.',phase:'Queued'});this.enqueue(job);return this.public(job);
   }
-  async sql(id,req){const job=this.get(id);if(job.status==='running'||job.enqueued||job.status==='ready')throw Error('SQL can be uploaded while this installation is waiting for setup.');const file=path.join(job.directory,'database-'+crypto.randomBytes(4).toString('hex')+'.sql');await this.receive(req,file,256*1024**2);job.sql=file;this.log(job,'SQL backup uploaded. Choose Install / Retry to import it into a separate database.');return this.public(job);}
+  async sql(id,req){const job=this.getActive(id);if(job.status==='running'||job.enqueued||job.status==='ready')throw Error('SQL can be uploaded while this installation is waiting for setup.');const file=path.join(job.directory,'database-'+crypto.randomBytes(4).toString('hex')+'.sql');await this.receive(req,file,256*1024**2);job.sql=file;this.log(job,'SQL backup uploaded. Choose Install / Retry to import it into a separate database.');return this.public(job);}
   async command(job,exe,args,{input,timeout=15*60*1000,cwd=job.app}={}) {
     return new Promise((resolve,reject)=>{
       const env={...process.env,PATH:path.dirname(process.execPath)+path.delimiter+(process.env.PATH||''),COMPOSER_ALLOW_SUPERUSER:'1',COMPOSER_NO_INTERACTION:'1'};
@@ -149,7 +180,7 @@ export class Installer {
     });
   }
   need(job,message,missing=[]){this.log(job,message);this.change(job,{status:'setup',phase:'Setup required',message,missing});}
-  async allocatePort(){for(let port=8500;port<9000;port++){if(this.sites.some(s=>s.port===port))continue;const free=await new Promise(resolve=>{const server=net.createServer();server.once('error',()=>resolve(false));server.listen(port,'127.0.0.1',()=>server.close(()=>resolve(true)))});if(free)return port;}throw Error('No local preview port is available.');}
+  async allocatePort(){for(let port=8500;port<9000;port++){if(this.sites.some(s=>s.port===port)||this.jobs.some(job=>job.port===port))continue;const free=await new Promise(resolve=>{const server=net.createServer();server.once('error',()=>resolve(false));server.listen(port,'127.0.0.1',()=>server.close(()=>resolve(true)))});if(free)return port;}throw Error('No local preview port is available.');}
   async install(job){
     try{
       this.change(job,{status:'running',phase:'Extracting source',message:'Preparing website source…',progress:10,missing:[]});
@@ -258,7 +289,10 @@ export class Installer {
     }catch(e){this.need(job,e.message);}
   }
   async check(id,internal=false){
-    const job=this.get(id);if(!job.port||!job.app)throw Error('Install the source first.');
+    const job=this.getActive(id);this.busy.add(id);try{return await this.checkPreview(job,internal)}finally{this.busy.delete(id);}
+  }
+  async checkPreview(job,internal=false){
+    if(!job.port||!job.app)throw Error('Install the source first.');
     if(!internal&&(job.status==='running'||job.enqueued))throw Error('Wait for the current installation to finish.');
     let last;
     for(let attempt=0;attempt<15;attempt++){

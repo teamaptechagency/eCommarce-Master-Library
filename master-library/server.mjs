@@ -23,17 +23,39 @@ function syncRuntime(){
 }
 async function startUploaded(site){
   if(await listening(site.port)){
-    if(site.kind!=='react-demo')return;
-    let health;try{health=await(await fetch(`http://127.0.0.1:${site.port}/__master/health`,{signal:AbortSignal.timeout(3000)})).json()}catch{throw Error('Restart this uploaded preview to activate the admin adapter.');}
+    let health;try{health=await(await fetch(`http://127.0.0.1:${site.port}/__master/health`,{headers:{'X-Master-Library':secret},signal:AbortSignal.timeout(3000)})).json()}catch{throw Error('Cannot verify the preview using this port. Stop it before restarting this installation.');}
     if(path.resolve(health.source||'')!==path.resolve(site.app))throw Error('Preview port belongs to another application.');
-    if(health.application==='master-react-source')return;
-    if(health.application!=='master-uploaded-static')throw Error('Unknown preview process. Restart this uploaded preview.');
-    const response=await fetch(`http://127.0.0.1:${site.port}/__master/shutdown`,{method:'POST',headers:{'X-Master-Library':secret},signal:AbortSignal.timeout(3000)});if(!response.ok)throw Error('Could not restart the uploaded preview.');
-    for(let attempt=0;attempt<20&&await listening(site.port);attempt++)await wait(100);
+    const expected=site.kind==='react-demo'?'master-react-source':site.kind==='uploaded-static'?'master-uploaded-static':'master-uploaded-php';
+    if(health.application===expected)return;
+    if(site.kind!=='react-demo'||health.application!=='master-uploaded-static')throw Error('Unknown preview process. Restart this uploaded preview.');
+    await stopUploaded(site);
   }
   if(site.kind==='react-demo')launch(process.execPath,[path.join(root,'react-server.mjs')],site.app,site.id,{MASTER_LIBRARY_ROOT:root,MASTER_REACT_PORT:String(site.port),MASTER_REACT_APP:site.app});
   else if(site.kind==='uploaded-static')launch(process.execPath,[path.join(root,'uploaded-server.mjs')],site.app,site.id,{MASTER_LIBRARY_ROOT:root,MASTER_UPLOAD_APP:site.app,MASTER_UPLOAD_PORT:String(site.port),MASTER_UPLOAD_PUBLIC:site.publicDir,MASTER_UPLOAD_SPA:String(site.spa)});
-  else launch(site.php,['-S','127.0.0.1:'+site.port,'-t',site.publicDir,path.join(root,'uploaded-router.php')],site.app,site.id,{MASTER_UPLOAD_APP:site.app,MASTER_UPLOAD_PUBLIC:site.publicDir,MASTER_UPLOAD_PORT:String(site.port)});
+  else {
+    const token=crypto.randomBytes(32).toString('hex');
+    const child=launch(site.php,['-S','127.0.0.1:'+site.port,'-t',site.publicDir,path.join(root,'uploaded-router.php')],site.app,site.id,{MASTER_LIBRARY_ROOT:root,MASTER_PREVIEW_TOKEN:token,MASTER_UPLOAD_APP:site.app,MASTER_UPLOAD_PUBLIC:site.publicDir,MASTER_UPLOAD_PORT:String(site.port)});
+    fs.writeFileSync(workerRecord(site),JSON.stringify({pid:child.pid,app:site.app,port:site.port,token}));
+  }
+}
+function workerRecord(site){if(!/^[a-z0-9-]+$/i.test(site.id))throw Error('Invalid preview ID');return path.join(data,'worker-'+site.id+'.json');}
+async function stopUploaded(site){
+  if(!site.port||!await listening(site.port))return;
+  let health;try{health=await(await fetch(`http://127.0.0.1:${site.port}/__master/health`,{headers:{'X-Master-Library':secret},signal:AbortSignal.timeout(3000)})).json()}catch{throw Error('Cannot verify this preview process. Stop its local server and retry.');}
+  if(path.resolve(health.source||'')!==path.resolve(site.app))throw Error('Preview port belongs to another application.');
+  if(['master-react-source','master-uploaded-static'].includes(health.application)){
+    const response=await fetch(`http://127.0.0.1:${site.port}/__master/shutdown`,{method:'POST',headers:{'X-Master-Library':secret},signal:AbortSignal.timeout(3000)});if(!response.ok)throw Error('Could not stop the preview.');await response.body?.cancel();
+    // Older previews do not report a PID; their shutdown fallback exits in 500ms.
+    if(!Number.isInteger(health.pid))await wait(800);
+  }else if(health.application==='master-uploaded-php'){
+    const recordFile=workerRecord(site);if(!fs.existsSync(recordFile))throw Error('Restart this PHP preview before deleting it.');
+    const record=JSON.parse(fs.readFileSync(recordFile,'utf8')),signature=crypto.createHmac('sha256',record.token).update(health.pid+'|'+health.source+'|'+health.port).digest('hex');
+    if(!Number.isInteger(record.pid)||record.pid===process.pid||record.pid!==health.pid||record.port!==site.port||path.resolve(record.app)!==path.resolve(site.app)||signature!==health.signature)throw Error('PHP preview ownership could not be verified.');
+    process.kill(record.pid);
+  }else throw Error('Unknown preview process. No files were moved.');
+  const processAlive=()=>{if(!Number.isInteger(health.pid))return false;try{process.kill(health.pid,0);return true}catch{return false}};
+  for(let attempt=0;attempt<30;attempt++){if(!await listening(site.port)&&!processAlive())return;await wait(100);}
+  throw Error('Preview is still running. No files were moved.');
 }
 let startupDone = false;
 const listening = p => new Promise(resolve=>{ const s=net.connect({host:'127.0.0.1',port:p}); s.setTimeout(700); s.once('connect',()=>{s.destroy();resolve(true)}); s.once('error',()=>resolve(false)); s.once('timeout',()=>{s.destroy();resolve(false)}); });
@@ -138,7 +160,7 @@ async function refresh() {
   })).finally(()=>checking=null);
   return checking;
 }
-const installer=new Installer({root,sites,startSite:startUploaded,onChange:syncRuntime});
+const installer=new Installer({root,sites,startSite:startUploaded,stopSite:stopUploaded,onChange:syncRuntime});
 syncRuntime();
 function catalog(){return sites.map(s=>({id:s.id,name:s.name,subtitle:s.subtitle,initials:s.initials,color:s.color,category:s.category,description:s.description,features:s.features,source:s.source,blocked:s.blocked,admin:s.admin,setupId:s.setupId,managedUpload:s.managedUpload,installState:s.installState,demoSupported:s.demoSupported!==false,duplicateCount:s.duplicateCount,archiveHash:s.archiveHash,url:s.port?'http://127.0.0.1:'+s.port:null,...state.get(s.id)}));}
 const mime={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml'};
@@ -147,7 +169,7 @@ const server=http.createServer(async(req,res)=>{
   try {
     if(!['127.0.0.1:'+port,'localhost:'+port].includes(req.headers.host))return send(res,403,{error:'Local host only'});
     const url=new URL(req.url,'http://127.0.0.1:'+port);
-    if(url.pathname==='/api/installer'&&req.method==='GET')return send(res,200,{csrf,installations:installer.list(),maxZipMB:512});
+    if(url.pathname==='/api/installer'&&req.method==='GET')return send(res,200,{csrf,installations:installer.list(),trash:installer.trashList(),maxZipMB:512});
     if(url.pathname.startsWith('/api/installations')&&req.method==='POST'){
       if(req.headers['x-master-csrf']!==csrf||req.headers.origin!==`http://${req.headers.host}`||req.headers['sec-fetch-site']==='cross-site')return send(res,403,{error:'Open installation from this local library.'});
       try{
@@ -157,6 +179,8 @@ const server=http.createServer(async(req,res)=>{
         let bytes=0,body='';for await(const chunk of req){bytes+=chunk.length;if(bytes>65536)throw Error('Setup request is too large.');body+=chunk;}
         const config=JSON.parse(body||'{}');
         if(action==='adopt')return send(res,202,await installer.adopt(config.siteId));
+        if(action.startsWith('trash/'))return send(res,200,await installer.trashInstallation(action.slice(6)));
+        if(action.startsWith('restore/'))return send(res,200,await installer.restoreInstallation(action.slice(8)));
         if(action.startsWith('admin/'))return send(res,202,await installer.enableAdmin(action.slice(6)));
         if(action.startsWith('setup/'))return send(res,202,await installer.setup(action.slice(6),config));
         if(action.startsWith('check/'))return send(res,200,await installer.check(action.slice(6)));

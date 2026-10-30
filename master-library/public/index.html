@@ -71,6 +71,12 @@
     <p id="setup-error" class="install-error" role="alert"></p><details id="install-log"><summary>Installation progress log</summary><pre id="setup-log" aria-live="polite"></pre></details>
   </dialog>
   <div id="toast" role="status" hidden></div>
+  <dialog id="delete-install-dialog" class="install-dialog">
+    <div class="install-dialog-heading"><h2>Delete installation?</h2><button type="button" class="icon-button" data-close-dialog aria-label="Close delete confirmation">×</button></div>
+    <p id="delete-install-name"></p><p>The installed copy, its uploaded ZIP and local setup files will move to Trash. Its preview will stop and its card will leave the library. You can restore it from Trash.</p><p>Original source files outside the library, databases and browser demo data are kept.</p>
+    <p id="delete-install-error" class="install-error" role="alert"></p><div class="dialog-actions"><button type="button" class="button secondary" data-close-dialog>Cancel</button><button type="button" class="button danger" id="confirm-delete-install">Move to Trash</button></div>
+  </dialog>
+  <dialog id="installation-trash-dialog" class="install-dialog"><div class="install-dialog-heading"><h2>Deleted installations</h2><button type="button" class="icon-button" data-close-dialog aria-label="Close Trash">×</button></div><p>Restore a website with its installed files and saved setup. Databases and browser demo data stay on this computer.</p><p id="trash-error" class="install-error" role="alert"></p><div id="installation-trash-list"></div></dialog>
   <script type="module" src="/app.js"></script>
 </body>
 </html>

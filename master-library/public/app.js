@@ -1,4 +1,4 @@
-import {openSetup} from '/installer-ui.js';
+import {openSetup,openDeleteInstallation} from '/installer-ui.js';
 import {cloudMode,loadCloudCatalog,showCloudSetup} from '/cloud-library.js';
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -46,7 +46,7 @@ function render(){
       <div class="feature-chips">${s.duplicateCount>1?`<span title="These filenames contain identical source bytes">Same source ×${s.duplicateCount}</span>`:''}${s.features.slice(0,4).map(f=>`<span>${escape(f)}</span>`).join('')}${s.features.length>4?`<span>+${s.features.length-4} more</span>`:''}</div>
       ${s.blocked?`<p class="blocked-note">${escape(s.blocked)}</p>`:''}
       <div class="card-actions">${ready?`<button class="button secondary" data-open="${s.id}" data-mode="public">◉ Public portal <span>↗</span></button>${s.admin?`<button class="button primary" data-open="${s.id}" data-mode="admin">◇ ${s.demoSupported?'Admin demo':'Admin portal'} <span>↗</span></button>`:''}`:`<button class="button primary" data-setup="${s.id}">Install / Setup →</button>`}</div>
-      <div class="card-footer"><span>${escape(s.source)}</span>${ready?`<button data-explore="${s.id}">${routeCount?routeCount+' pages · ':''}Explore features →</button>${s.managedUpload?`<button data-setup="${s.id}">Setup</button>`:""}`:`<button data-setup="${s.id}">Open setup →</button>`}</div></div></article>`;
+      <div class="card-footer"><span>${escape(s.source)}</span>${ready?`<button data-explore="${s.id}">${routeCount?routeCount+' pages · ':''}Explore features →</button>${s.managedUpload?`<button data-setup="${s.id}">Setup</button><button class="delete-install-link" data-delete-install="${s.id}">Delete</button>`:""}`:`<button data-setup="${s.id}">Open setup →</button>${s.managedUpload?`<button class="delete-install-link" data-delete-install="${s.id}">Delete</button>`:""}`}</div></div></article>`;
   }).join(''):`<div class="empty-state">No websites match this view.<br>Try another search or filter.</div>`;
 }
 async function load(){
@@ -89,6 +89,7 @@ function openFeature(path,admin){
   };
 }
 document.addEventListener('click',event=>{
+  const remove=event.target.closest('[data-delete-install]');if(remove){const site=sites.find(s=>s.id===remove.dataset.deleteInstall);if(site)openDeleteInstallation(site);return;}
   const setup=event.target.closest('[data-setup]');if(setup){const site=sites.find(s=>s.id===setup.dataset.setup);if(site)openSetup(site);return;}
   const favorite=event.target.closest('[data-favorite]');if(favorite){event.stopPropagation();const id=favorite.dataset.favorite;favorites=favorites.includes(id)?favorites.filter(x=>x!==id):[...favorites,id];localStorage.setItem('commerce-library-favorites',JSON.stringify(favorites));render();return}
   const nav=event.target.closest('[data-view]');if(nav){setView(nav.dataset.view);return}

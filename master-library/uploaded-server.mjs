@@ -10,7 +10,7 @@ const server=http.createServer((req,res)=>{
   try{
     if(!['127.0.0.1:'+port,'localhost:'+port].includes(req.headers.host))return reply(403,'Local preview only');
     const pathname=new URL(req.url,'http://localhost').pathname;
-    if(pathname==='/__master/health'){res.writeHead(200,{'Content-Type':'application/json'});return res.end(JSON.stringify({application:'master-uploaded-static',source:process.env.MASTER_UPLOAD_APP||root,port}));}
+    if(pathname==='/__master/health'){res.writeHead(200,{'Content-Type':'application/json'});return res.end(JSON.stringify({application:'master-uploaded-static',source:process.env.MASTER_UPLOAD_APP||root,port,pid:process.pid}));}
     if(pathname==='/__master/shutdown'&&req.method==='POST'){
       const runtime=JSON.parse(fs.readFileSync(path.join(library,'data/runtime.json'),'utf8'));
       if(req.headers['x-master-library']!==runtime.secret)return reply(403,'Forbidden');

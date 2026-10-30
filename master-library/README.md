@@ -22,6 +22,8 @@ These demo adapters use isolated browser storage on each preview port. The direc
 
 Run `npm test` in this directory. For the local database integration test, set `MASTER_TEST_MYSQL=1`; it uses local root credentials on port 3306, creates a temporary isolated schema/user and removes them after the test.
 
+Installed ZIP cards have a **Delete** action. Its confirmation moves only that installation's working directory, uploaded ZIP and setup files into the library's private Trash, after stopping and verifying its preview process. **Trash → Restore** moves the copy back and starts its preview again. Original external source files, databases, favorites and browser demo data are retained. Preview ports remain reserved for deleted entries to keep restored browser data separate from other websites. Running installations cannot be deleted. File moves validate the installation ID, absolute paths and real directories; interrupted moves recover on startup. This feature does not permanently purge Trash or reclaim its disk space.
+
 ## Included websites
 
 | Website | Preview | Admin |

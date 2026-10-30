@@ -5,6 +5,15 @@ $root = realpath(getenv('MASTER_UPLOAD_PUBLIC'));
 $port = getenv('MASTER_UPLOAD_PORT');
 if (!in_array($_SERVER['HTTP_HOST'] ?? '', ['127.0.0.1:' . $port, 'localhost:' . $port], true)) { http_response_code(403); exit; }
 $uri = rawurldecode(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/');
+if ($uri === '/__master/health') {
+    $library = getenv('MASTER_LIBRARY_ROOT') ?: __DIR__;
+    $runtime = json_decode(file_get_contents($library . '/data/runtime.json'), true);
+    if (!hash_equals($runtime['secret'], $_SERVER['HTTP_X_MASTER_LIBRARY'] ?? '')) { http_response_code(403); exit; }
+    $pid = getmypid();
+    header('Content-Type: application/json');
+    echo json_encode(['application' => 'master-uploaded-php', 'source' => $app, 'port' => (int)$port, 'pid' => $pid, 'signature' => hash_hmac('sha256', $pid . '|' . $app . '|' . $port, getenv('MASTER_PREVIEW_TOKEN') ?: '')]);
+    exit;
+}
 if (str_contains($uri, '\\') || preg_match('#(?:^|/)\.#', $uri)
     || ($root === realpath($app) && preg_match('#^/(?:vendor|node_modules|config|database|storage|app|bootstrap|resources|routes)(?:/|$)#i', $uri))) { http_response_code(404); exit; }
 $candidate = realpath($root . $uri);

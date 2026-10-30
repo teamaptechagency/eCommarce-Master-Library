@@ -11,7 +11,7 @@ Object.assign(mime,{'.mjs':'text/javascript; charset=utf-8','.gif':'image/gif','
 const server=http.createServer((req,res)=>{try{
  if(!['127.0.0.1:'+port,'localhost:'+port].includes(req.headers.host)||!['127.0.0.1','::1'].includes(req.socket.remoteAddress))return send(res,403,{error:'Local preview only'});
  const url=new URL(req.url,'http://127.0.0.1:'+port);const route=decodeURIComponent(url.pathname);const session=getSession(req);
- if(route==='/__master/health')return send(res,200,{application:'master-react-source',port,source:app,mode:'local-browser-demo'});
+ if(route==='/__master/health')return send(res,200,{application:'master-react-source',port,source:app,pid:process.pid,mode:'local-browser-demo'});
  if(route==='/__master/shutdown'&&req.method==='POST'){
   if(req.headers['x-master-library']!==JSON.parse(fs.readFileSync(runtimeFile,'utf8')).secret)return send(res,403,{error:'Forbidden'});
   send(res,200,{ok:true});server.close(()=>process.exit(0));setTimeout(()=>process.exit(0),500).unref();return;
