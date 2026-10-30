@@ -3,6 +3,11 @@ $ErrorActionPreference = 'Stop'
 $library = Join-Path $PSScriptRoot 'master-library'
 $node = 'C:\Program Files\nodejs\node.exe'
 if (!(Test-Path -LiteralPath $node)) { $node = (Get-Command node -ErrorAction Stop).Source }
+if (!(Test-Path -LiteralPath (Join-Path $library 'node_modules\yauzl\package.json'))) {
+    $npm = Join-Path (Split-Path $node) 'npm.cmd'
+    & $npm install --prefix $library --ignore-scripts --no-audit --no-fund
+    if ($LASTEXITCODE -ne 0) { throw 'Master Library dependencies could not be installed. Check the network and retry.' }
+}
 $ready = $false
 try { $r = Invoke-WebRequest 'http://127.0.0.1:8090/api/sites' -UseBasicParsing -TimeoutSec 2; $ready = ($r.StatusCode -eq 200) } catch {}
 if (!$ready) {

@@ -1,6 +1,20 @@
 # Commerce Master Library
 
-Open **http://127.0.0.1:8090** after double-clicking `Start-MasterLibrary.cmd` in the parent folder. The launcher starts the library, both existing MariaDB runtimes and six separate PHP previews. No npm install or frontend build is required.
+Open **http://127.0.0.1:8090** after double-clicking `Start-MasterLibrary.cmd` in the parent folder. The launcher installs missing library dependencies, starts the library, both existing MariaDB runtimes and six separate PHP previews. The library interface needs no frontend build.
+
+## ZIP upload and installation
+
+Choose **Upload website ZIP**, select the original source archive and enter its title. Installation runs in a serial queue with persistent progress logs. The library extracts nested source folders, installs dependencies, builds Vite projects, starts a loopback preview and checks the homepage plus its CSS/JavaScript. Byte-identical archives reuse the existing entry.
+
+Supported automatic paths are static HTML, Vite/React, Laravel and plain PHP. WordPress gets a separate local database and its native installation link. Other frameworks can use an existing static export: enter its directory in Setup. Missing application files, runtime errors and build failures remain visible with an active **Install / Setup** action and a log. Upload a complete replacement ZIP for incomplete source.
+
+Laravel installs Composer dependencies when required, downloading checksum-verified Composer from its official server if unavailable locally. It creates an isolated `ml_<random>` MySQL database and a restricted database user; it imports the supplied SQL backup or runs migrations. Setup accepts a local MySQL port/user/password, an SQL backup, environment values and PHP 8.2/8.4 selection. Original environment files are retained privately outside the served application. Package lifecycle scripts and Composer plugins/scripts are disabled during dependency installation; Vite builds and Laravel package discovery/migrations still execute the uploaded source.
+
+Use **Install / Setup** on E-commerce-9 to prepare its separate source copy, upload the missing base SQL and retry. E-commerce-18 and Ghorer require complete source ZIPs. A native application installer opens through **Open website installer**; finish it and choose **Check installation**. Uploaded sites use ports 8500–8999 and restore from `data/installations/jobs.json` when the library restarts. All uploads, settings, logs and databases are local runtime data excluded from Git.
+
+Ready upload cards have a **Setup** link to save their admin portal path. Existing supported demo adapters retain password-free login. Unknown uploaded applications use their own admin login and need an application-specific adapter for password-free access; importing a frontend does not supply a missing backend or database. ZIP extraction rejects traversal, symlinks, duplicate entries and Windows reserved paths, with limits of 512 MB compressed / 3 GB extracted / 60,000 entries. SQL uploads are limited to 256 MB. Installation requests require the local page's CSRF token and matching origin.
+
+Run `npm test` in this directory. For the local database integration test, set `MASTER_TEST_MYSQL=1`; it uses local root credentials on port 3306, creates a temporary isolated schema/user and removes them after the test.
 
 ## Included websites
 

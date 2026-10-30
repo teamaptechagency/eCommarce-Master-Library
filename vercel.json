@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "echo No dependencies required for the library interface",
+  "buildCommand": "node master-library/build-vercel.mjs",
+  "outputDirectory": "master-library/dist",
+  "headers": [{"source": "/cloud/:path*", "headers": [{"key": "Cache-Control", "value": "no-cache"}]}]
+}

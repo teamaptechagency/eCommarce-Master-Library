@@ -2,6 +2,7 @@
 !/README.md
 !/.gitignore
 !/.gitattributes
+!/vercel.json
 !/LOCAL-SITES.md
 !/*.cmd
 !/*.ps1

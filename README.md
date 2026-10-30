@@ -18,6 +18,14 @@ Open http://127.0.0.1:8090/. Public previews and signed, passwordless local admi
 
 The sidebar button hides/shows the library navigation and remembers the selection. Favorites, website search, feature navigation and direct public/admin views are included.
 
+## Vercel deployment
+
+The Vercel project must publish the generated library interface, rather than the entire repository. The root `vercel.json` runs `node master-library/build-vercel.mjs` and publishes `master-library/dist`; an equivalent configuration also supports selecting `master-library` as the Vercel Root Directory. Use Framework Preset **Other** and remove dashboard overrides that conflict with these build/output settings. No dependency installation is required for this static interface.
+
+The deployed interface loads a sanitized website catalog when the local API is absent. Search, favorites, collection filters, sidebar controls and hosting setup remain usable. It accurately shows the native applications as offline and explains backend requirements when opening a storefront, admin portal or ZIP installation. The local link works only on a computer running `Start-MasterLibrary.cmd`.
+
+The PHP applications, databases, Node preview processes and ZIP installer require separate backend hosting. This Vercel build does not deploy those services or expose local runtime files. A public backend is not configured in this repository yet.
+
 ## Original source installations
 
 The existing MartVill, Shopperzz, Nest, GroStore and Shofy integrations reference locally installed Laravel applications under `E-commerce-*/local-app`; Footstep references the existing local Footstep installation. These supplied third-party installations, their Composer dependencies, private configuration, original ZIP archives and business databases are external prerequisites and are not included in this source repository.

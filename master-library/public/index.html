@@ -19,7 +19,7 @@
         <button class="nav-item active" data-view="all"><span>▦</span>All websites <b id="nav-count">8</b></button>
         <button class="nav-item" data-view="public"><span>◉</span>Public portals</button>
         <button class="nav-item" data-view="admin"><span>◇</span>Admin demos</button>
-        <button class="nav-item" data-view="blocked"><span>◷</span>Needs setup <b>2</b></button>
+        <button class="nav-item" data-view="blocked"><span>◷</span>Install / Setup <b id="setup-nav-count">0</b></button>
         <button class="nav-item" data-view="favorites"><span>☆</span>Favorites</button>
       </nav>
       <div class="nav-label category-label">COLLECTIONS</div>
@@ -33,7 +33,7 @@
         <section class="heading-row"><div><div class="eyebrow">YOUR ECOMMERCE TOOLKIT</div><h1 id="page-title">A home for every storefront<span>.</span></h1><p class="intro">Explore your websites, discover their features, and step straight into any admin demo.</p></div><div class="collection-stamp"><span>↗</span><small>ONE WORKSPACE<br>ENDLESS POSSIBILITIES</small></div></section>
         <section class="metrics" aria-label="Collection status"><div><span class="metric-icon">▦</span><span><strong id="total-count">8</strong><small>Websites in your library</small></span></div><div><span class="metric-icon online-icon">◉</span><span><strong id="online-count">—</strong><small>Public portals online</small></span></div><div><span class="metric-icon">◇</span><span><strong id="demo-count">6</strong><small>Direct admin demos</small></span></div><div><span class="metric-icon muted-icon">◷</span><span><strong id="blocked-count">2</strong><small>Waiting for setup</small></span></div></section>
         <section class="collection-toolbar"><div class="section-title"><h2 id="collection-title">All websites</h2><span id="result-count">8 websites</span></div><label class="search"><span>⌕</span><input id="search" type="search" placeholder="Search websites or features…" aria-label="Search websites or features"><kbd>/</kbd></label></section>
-        <div class="filter-row"><div class="status-filters"><button class="filter active" data-status="all">All</button><button class="filter" data-status="online">Online <span id="online-filter-count">0</span></button><button class="filter" data-status="blocked">Needs setup <span>2</span></button></div><div class="sort-label">Sorted by collection order <span>↓</span></div></div>
+        <div class="filter-row"><div class="status-filters"><button class="filter active" data-status="all">All</button><button class="filter" data-status="online">Online <span id="online-filter-count">0</span></button><button class="filter" data-status="blocked">Install / Setup <span id="setup-filter-count">0</span></button></div><button class="button primary" id="upload-website">＋ Upload website ZIP</button></div>
         <section class="site-grid" id="site-grid" aria-live="polite"><div class="empty-state">Starting your local collection…</div></section>
         <footer class="main-footer"><span><i></i> Your projects stay on this computer.</span><span>Commerce Master Library <span class="footer-version">v1.0</span></span></footer>
       </div>
@@ -44,6 +44,32 @@
     </main>
   </div>
   <dialog id="parameter-dialog"><form method="dialog"><h2>Choose a record</h2><p id="parameter-path"></p><div id="parameter-fields"></div><div class="dialog-actions"><button value="cancel" formnovalidate class="button secondary">Cancel</button><button id="parameter-open" value="open" class="button primary">Open page ↗</button></div></form></dialog>
+  <dialog id="upload-dialog" class="install-dialog">
+    <form id="upload-form"><div class="install-dialog-heading"><h2>Install a website</h2><button type="button" class="icon-button" data-close-dialog aria-label="Close upload">×</button></div>
+      <p>Upload the original website ZIP. We will extract it, detect the app, install dependencies and start its local preview.</p>
+      <label>Website title<input id="upload-name" maxlength="100" placeholder="Use the original website name"></label>
+      <label class="upload-drop">Website ZIP<input type="file" id="upload-file" accept=".zip,application/zip" required><small>Up to 512 MB · HTML, Vite/React, Laravel and PHP</small></label>
+      <p id="upload-replacement" hidden></p><progress id="upload-progress" max="100" value="0" hidden></progress><p id="upload-message" role="status"></p>
+      <div class="dialog-actions"><button type="button" class="button secondary" data-close-dialog>Cancel</button><button type="submit" id="upload-submit" class="button primary">Upload & auto-install</button></div>
+    </form>
+  </dialog>
+  <dialog id="setup-dialog" class="install-dialog">
+    <div class="install-dialog-heading"><h2 id="setup-title">Install / Setup</h2><button type="button" class="icon-button" data-close-dialog aria-label="Close setup">×</button></div>
+    <div class="install-status"><strong id="setup-phase"></strong><progress id="setup-progress" max="100" value="0"></progress><p id="setup-message" role="status"></p></div>
+    <div id="setup-source-actions"><button type="button" id="prepare-source" class="button primary">Install available source</button> <button type="button" id="replace-source" class="button secondary">Upload complete ZIP</button></div>
+    <form id="setup-form" hidden>
+      <div id="setup-fields"><p class="install-hint">Supply only the settings this source needs, then continue installation.</p>
+        <label>Admin portal path (optional)<input id="setup-admin" placeholder="/admin"></label>
+        <p class="install-hint">Uploaded admin portals use the source application's login. Password-free demo access requires an adapter for that application.</p>
+        <label id="setup-php-field">PHP runtime<select id="setup-php"><option value="">Automatic</option><option value="8.2">PHP 8.2</option><option value="8.4">PHP 8.4</option></select></label>
+        <div id="setup-database"><h3>Local database</h3><p class="install-hint">A separate database and restricted database user will be created for this website.</p><div class="install-field-grid"><label>Host<input id="setup-db-host" value="127.0.0.1" readonly></label><label>Port<input id="setup-db-port" type="number" min="1" max="65535" value="3306"></label><label>Database administrator<input id="setup-db-user" value="root" autocomplete="off"></label><label>Database password<input id="setup-db-password" type="password" autocomplete="new-password"></label></div><label>Base database backup (.sql)<input id="setup-sql" type="file" accept=".sql"></label></div>
+        <label>Environment values (optional)<textarea id="setup-environment" rows="4" placeholder="VITE_API_URL=http://127.0.0.1:9000"></textarea></label>
+        <label>Built public directory (optional)<input id="setup-output" placeholder="dist or build — relative to the application"></label>
+      </div>
+      <div class="dialog-actions"><a id="native-installer" class="button secondary" target="_blank" rel="noopener" hidden>Open website installer ↗</a><button id="check-install" type="button" class="button secondary" hidden>Check installation</button><button id="setup-submit" type="submit" class="button primary">Install / Retry</button></div>
+    </form>
+    <p id="setup-error" class="install-error" role="alert"></p><details id="install-log"><summary>Installation progress log</summary><pre id="setup-log" aria-live="polite"></pre></details>
+  </dialog>
   <div id="toast" role="status" hidden></div>
   <script type="module" src="/app.js"></script>
 </body>

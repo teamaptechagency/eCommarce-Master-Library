@@ -1,17 +1,24 @@
 {
-  "name":"ecommerce-master-library",
-  "private":true,
-  "type":"module",
-  "scripts":{"start":"node server.mjs","prepare:new":"node prepare-new-sites.mjs","build:new":"node build-new-sites.mjs","setup:new":"node setup-imported-source.mjs"},
-  "dependencies":{
-    "@tailwindcss/vite":"4.3.3",
-    "@vitejs/plugin-react":"6.1.1",
-    "canvas-confetti":"1.9.4",
-    "lucide-react":"0.546.0",
-    "motion":"12.23.24",
-    "react":"19.3.1",
-    "react-dom":"19.3.1",
-    "tailwindcss":"4.3.3",
-    "vite":"8.3.5"
+  "name": "ecommerce-master-library",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "prepare:new": "node prepare-new-sites.mjs",
+    "build:new": "node build-new-sites.mjs",
+    "setup:new": "node setup-imported-source.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@vitejs/plugin-react": "6.1.1",
+    "canvas-confetti": "1.9.4",
+    "lucide-react": "0.546.0",
+    "motion": "12.23.24",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwindcss": "4.3.3",
+    "vite": "8.3.5",
+    "yauzl": "^3.4.0"
   }
 }

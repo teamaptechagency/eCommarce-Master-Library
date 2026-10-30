@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { root, sites } from './sites.mjs';
 import { reactRoutes } from './react-routes.mjs';
+import { Installer } from './installer.mjs';
 
 const port = Number(process.env.MASTER_PORT || 8090);
 const data = path.join(root,'data');
@@ -14,6 +15,16 @@ const secret = crypto.randomBytes(32).toString('hex');
 fs.writeFileSync(path.join(data,'runtime.json'), JSON.stringify({secret, sites}));
 const state = new Map(sites.map(s=>[s.id,{status:s.blocked?'blocked':'starting',title:s.subtitle,detail:s.blocked||'Starting local preview…'}]));
 const children = [];
+const csrf = crypto.randomBytes(32).toString('hex');
+function syncRuntime(){
+  fs.writeFileSync(path.join(data,'runtime.json'),JSON.stringify({secret,sites}));
+  for(const site of sites)if(site.managedUpload)state.set(site.id,{status:site.blocked?(site.installState==='running'?'starting':'blocked'):'online',title:site.subtitle,detail:site.blocked||'Installed from ZIP'});
+}
+async function startUploaded(site){
+  if(await listening(site.port))return;
+  if(site.kind==='uploaded-static')launch(process.execPath,[path.join(root,'uploaded-server.mjs')],site.app,site.id,{MASTER_UPLOAD_PORT:String(site.port),MASTER_UPLOAD_PUBLIC:site.publicDir,MASTER_UPLOAD_SPA:String(site.spa)});
+  else launch(site.php,['-S','127.0.0.1:'+site.port,'-t',site.publicDir,path.join(root,'uploaded-router.php')],site.app,site.id,{MASTER_UPLOAD_APP:site.app,MASTER_UPLOAD_PUBLIC:site.publicDir,MASTER_UPLOAD_PORT:String(site.port)});
+}
 let startupDone = false;
 const listening = p => new Promise(resolve=>{ const s=net.connect({host:'127.0.0.1',port:p}); s.setTimeout(700); s.once('connect',()=>{s.destroy();resolve(true)}); s.once('error',()=>resolve(false)); s.once('timeout',()=>{s.destroy();resolve(false)}); });
 const wait = ms => new Promise(r=>setTimeout(r,ms));
@@ -32,6 +43,7 @@ async function database(p,exe,args) {
   for(let i=0;i<30;i++) { if(await listening(p))return; await wait(500); }
 }
 async function exportRoutes(site) {
+  if(site.managedUpload){fs.writeFileSync(path.join(data,site.id+'-routes.json'),JSON.stringify([{path:'/',name:'Home',access:'public'},...(site.admin?[{path:site.admin,name:'Admin portal',access:'admin'}]:[])]));return;}
   if(site.kind==='react-demo'){fs.writeFileSync(path.join(data,site.id+'-routes.json'),JSON.stringify(reactRoutes()));return;}
   for(let attempt=0;attempt<3;attempt++)try {
     const response=await fetch(`http://127.0.0.1:${site.port}/__master/routes`,{headers:{'X-Master-Library':secret},signal:AbortSignal.timeout(30000)});
@@ -82,6 +94,7 @@ async function startServices() {
   ]);
   const startedReactPorts=new Set();
   for(const site of sites.filter(s=>!s.blocked)) {
+    if(site.managedUpload){await startUploaded(site);continue;}
     if(site.kind==='react-demo'){
       if(startedReactPorts.has(site.port))continue;startedReactPorts.add(site.port);
       if(!fs.existsSync(path.join(site.app,'dist/index.html'))){state.set(site.id,{status:'error',title:site.subtitle,detail:'Imported source needs its local Vite build.'});continue;}
@@ -97,6 +110,7 @@ async function startServices() {
       });
     }
   }
+  for(const job of installer.jobs.filter(j=>j.status==='setup'&&j.nativeSetup&&j.progress>=85))await startUploaded(sites.find(s=>s.id===job.siteId));
   await Promise.all(sites.filter(s=>!s.blocked).map(exportRoutes));
   startupDone=true;
   await refresh();
@@ -114,31 +128,49 @@ async function refresh() {
   })).finally(()=>checking=null);
   return checking;
 }
-function catalog(){return sites.map(s=>({id:s.id,name:s.name,subtitle:s.subtitle,initials:s.initials,color:s.color,category:s.category,description:s.description,features:s.features,source:s.source,blocked:s.blocked,admin:s.admin,duplicateCount:s.duplicateCount,archiveHash:s.archiveHash,url:s.port?'http://127.0.0.1:'+s.port:null,...state.get(s.id)}));}
+const installer=new Installer({root,sites,startSite:startUploaded,onChange:syncRuntime});
+syncRuntime();
+function catalog(){return sites.map(s=>({id:s.id,name:s.name,subtitle:s.subtitle,initials:s.initials,color:s.color,category:s.category,description:s.description,features:s.features,source:s.source,blocked:s.blocked,admin:s.admin,setupId:s.setupId,managedUpload:s.managedUpload,installState:s.installState,demoSupported:s.demoSupported!==false,duplicateCount:s.duplicateCount,archiveHash:s.archiveHash,url:s.port?'http://127.0.0.1:'+s.port:null,...state.get(s.id)}));}
 const mime={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml'};
 function send(res,status,body,type='application/json; charset=utf-8') { res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin'});res.end(type.startsWith('application/json')?JSON.stringify(body):body); }
 const server=http.createServer(async(req,res)=>{
   try {
     if(!['127.0.0.1:'+port,'localhost:'+port].includes(req.headers.host))return send(res,403,{error:'Local host only'});
     const url=new URL(req.url,'http://127.0.0.1:'+port);
+    if(url.pathname==='/api/installer'&&req.method==='GET')return send(res,200,{csrf,installations:installer.list(),maxZipMB:512});
+    if(url.pathname.startsWith('/api/installations')&&req.method==='POST'){
+      if(req.headers['x-master-csrf']!==csrf||req.headers.origin!==`http://${req.headers.host}`||req.headers['sec-fetch-site']==='cross-site')return send(res,403,{error:'Open installation from this local library.'});
+      try{
+        const action=url.pathname.slice('/api/installations/'.length);
+        if(action==='upload')return send(res,202,await installer.upload(req,{filename:decodeURIComponent(req.headers['x-file-name']||''),name:url.searchParams.get('name'),replaceSiteId:url.searchParams.get('replace')}));
+        if(action.startsWith('sql/'))return send(res,200,await installer.sql(action.slice(4),req));
+        let bytes=0,body='';for await(const chunk of req){bytes+=chunk.length;if(bytes>65536)throw Error('Setup request is too large.');body+=chunk;}
+        const config=JSON.parse(body||'{}');
+        if(action==='adopt')return send(res,202,await installer.adopt(config.siteId));
+        if(action.startsWith('setup/'))return send(res,202,await installer.setup(action.slice(6),config));
+        if(action.startsWith('check/'))return send(res,200,await installer.check(action.slice(6)));
+        return send(res,404,{error:'Unknown installation action.'});
+      }catch(e){return send(res,400,{error:e.message});}
+    }
     if(req.method!=='GET')return send(res,405,{error:'Method not allowed'});
     if(url.pathname==='/api/sites')return send(res,200,catalog());
     if(url.pathname==='/api/refresh'){await Promise.all(sites.filter(s=>!s.blocked).map(exportRoutes));await refresh();return send(res,200,catalog());}
     if(url.pathname.startsWith('/api/routes/')){
       const id=url.pathname.split('/').pop();if(!sites.some(s=>s.id===id))return send(res,404,{error:'Unknown site'});
+      const site=sites.find(s=>s.id===id);if(site.managedUpload)return send(res,200,[{path:'/',name:'Home',access:'public'},...(site.admin?[{path:site.admin,name:'Admin portal',access:'admin'}]:[])]);
       const file=path.join(data,id+'-routes.json');return send(res,200,fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):[]);
     }
     if(url.pathname.startsWith('/demo/')){
       if(req.headers['sec-fetch-site']==='cross-site')return send(res,403,{error:'Open demo login from the master library.'});
       const site=sites.find(s=>s.id===url.pathname.split('/')[2]);
-      if(!site||site.blocked)return send(res,409,{error:site?.blocked||'Unknown site'});
+      if(!site||site.blocked||site.demoSupported===false)return send(res,409,{error:site?.blocked||'This uploaded source uses its own admin login. Open Admin portal.'});
       const target=url.searchParams.get('next')||site.admin;
       if(!target.startsWith('/')||target.startsWith('//')||/[\r\n\\]/.test(target)||target.includes('://'))return send(res,400,{error:'Invalid local path'});
       const expires=Math.floor(Date.now()/1000)+60;
       const signature=crypto.createHmac('sha256',secret).update(site.id+'|'+expires+'|'+target).digest('hex');
       res.writeHead(302,{'Location':`http://127.0.0.1:${site.port}/__master/demo-login?${new URLSearchParams({site:site.id,expires:String(expires),next:target,signature})}`,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});return res.end();
     }
-    const files={'/':'index.html','/app.js':'app.js','/styles.css':'styles.css'};
+    const files={'/':'index.html','/app.js':'app.js','/installer-ui.js':'installer-ui.js','/cloud-library.js':'cloud-library.js','/styles.css':'styles.css'};
     const file=files[url.pathname];
     if(!file)return send(res,404,{error:'Not found'});
     send(res,200,fs.readFileSync(path.join(root,'public',file)),mime[path.extname(file)]);
